@@ -177,7 +177,7 @@ if (isset($data->request_type)) {
 
                 $sql = "INSERT INTO customer_contact ( `code`, `srno`, `contactname`, `contactdesignation`, `contactmobile`, `contactemail`, `remarks`, `unit_location`, `unit_address`, `user_name`, `password`, `entered_by`, `type`, `timestamp` ) 
                 VALUES ('$code', '$srno', '$contactname', '$contactdesignation', '$contactmobile', '$contactemail', '$remarks', '$unit_location', '$unit_address', '$user_name', '$password', '$entered_by', '$type', '$timestamp' )";
-                // return Success("Customer added successfully", $sql);
+
                 if ($conn->query($sql) === TRUE) {
                     Success("Subunit added successfully");
                 } else {
@@ -189,67 +189,75 @@ if (isset($data->request_type)) {
             }
         }
         break;
-        case "GET_CUSTOMER":{
+        case "GET_SUB_UNIT":{
             $recordsPerPage = 10;
             $pagination = true; // Default pagination is true
-            if (isset($data->records_per_page)) {
-                $recordsPerPage = $data->records_per_page;
-            }
-
-            if(isset($data->records_per_page)){
-                $recordsPerPage = $data->records_per_page;
-            }
-            $page = isset($data->page) && is_numeric($data->page) ? $data->page : 1;
-            $offset = ($page - 1) * $recordsPerPage;
-
-            $search = '';
-            $status = 'Active';
-            if(isset($data->search)){
-                $search = $data->search;
-            }
-            if(isset($data->status)){
-                $status = $data->status;
-            }
-            // Check if pagination flag is set to false
-            if (isset($data->pagination) && $data->pagination === false) {
-                $pagination = false;
-            }
-            $totalRecords = 0;
-            if ($pagination) {
-                $sqlCount = "SELECT COUNT(*) AS total_records FROM customer WHERE 
-                            `status` = '$status' AND
-                            (`code` LIKE '%$search%' OR 
-                            `name` LIKE '%$search%' OR 
-                            `email` LIKE '%$search%')";
-                $resultCount = $conn->query($sqlCount);
-                $totalRecords = $resultCount->fetch_assoc()['total_records'];
-
-            }
-            $sql = "SELECT `code`, `name`, `address`, `city`, `state`, `pincode`, `phone1`, `phone2`, `email`, `fax`, `date_created`, `tally_name`, `GST_no`, `remarks`, `status`, `entered_by` FROM customer 
-                    WHERE 
-                    `status` = '$status' AND
-                    (`code` LIKE '%$search%' OR 
-                    `name` LIKE '%$search%' OR 
-                    `email` LIKE '%$search%' )";
-            // Append pagination only if the pagination flag is true
-            if ($pagination) {
-                $sql .= " LIMIT $offset, $recordsPerPage";
-            }
-
-
-            $result = $conn->query($sql);
-            $response = array(
-                "total_records" => $totalRecords,
-                "current_page" => $page,
-                "records_per_page" => $recordsPerPage,
-                "data" => array()
-            );
-            if ($result->num_rows > 0) {
-                while ($row = $result->fetch_assoc()) {
-                    $response["data"][] = $row;
+            if(isset($data->code)){
+                $code = $data->code;
+                if (isset($data->records_per_page)) {
+                    $recordsPerPage = $data->records_per_page;
                 }
+    
+                if(isset($data->records_per_page)){
+                    $recordsPerPage = $data->records_per_page;
+                }
+                $page = isset($data->page) && is_numeric($data->page) ? $data->page : 1;
+                $offset = ($page - 1) * $recordsPerPage;
+    
+                $search = '';
+                $status = 'Active';
+                if(isset($data->search)){
+                    $search = $data->search;
+                }
+                if(isset($data->status)){
+                    $status = $data->status;
+                }
+                // Check if pagination flag is set to false
+                if (isset($data->pagination) && $data->pagination === false) {
+                    $pagination = false;
+                }
+                // $res1 = $conn->query("ALTER TABLE `customer_contact` MODIFY COLUMN `id` INT;");
+                // echo $res1;
+                $totalRecords = 0;
+                if ($pagination) {
+                    $sqlCount = "SELECT COUNT(*) AS total_records FROM `customer_contact` WHERE 
+                                `code` = '$code' AND
+                                (`contactmobile` LIKE '%$search%' OR 
+                                `contactname` LIKE '%$search%' OR 
+                                `contactemail` LIKE '%$search%')";
+                    $resultCount = $conn->query($sqlCount);
+                    $totalRecords = $resultCount->fetch_assoc()['total_records'];
+    
+                }
+                $sql = "SELECT `id`, `code`, `srno`, `contactname`, `contactdesignation`, `contactmobile`, `contactemail`, `remarks`, `unit_location`, `unit_address`, `user_name`, `entered_by`, `type`, `timestamp` FROM `customer_contact` 
+                        WHERE 
+                        `code` = '$code' AND 
+                        ( `contactmobile` LIKE '%$search%' OR 
+                        `contactname` LIKE '%$search%' OR 
+                        `contactemail` LIKE '%$search%')";
+                // Append pagination only if the pagination flag is true
+                if ($pagination) {
+                    $sql .= " LIMIT $offset, $recordsPerPage";
+                }
+    
+                //  echo $sql;
+                $result = $conn->query($sql);
+                $response = array(
+                    "total_records" => $totalRecords,
+                    "current_page" => $page,
+                    "records_per_page" => $recordsPerPage,
+                    "data" => array()
+                );
+                if ($result->num_rows > 0) {
+                    while ($row = $result->fetch_assoc()) {
+                        $response["data"][] = $row;
+                    }
+                }
+                // echo json_encode($response);
+                Success("Fetch customer details successfully", $response);
+            }else{
+                Failure("Customer is not given");
             }
-            echo json_encode($response);
         }
         break;
         case "GET_CUSTOMER_DETAILS":{
@@ -268,11 +276,11 @@ if (isset($data->request_type)) {
             }
         }
         break;
-        case "UPDATE_CUSTOMER":{
-            $customerCode = isset($data->customer_code) ? $data->customer_code : '';
+        case "UPDATE_SUB_UNIT":{
+            $id = isset($data->id) ? $data->id : '';
             $updatedDetails = isset($data->updated_details) ? $data->updated_details : array();
-            if (!empty($customerCode) && !empty($updatedDetails)) {
-                $updateQuery = "UPDATE customer SET ";
+            if (!empty($id) && !empty($updatedDetails)) {
+                $updateQuery = "UPDATE `customer_contact` SET ";
                 foreach ($updatedDetails as $key => $value) {
                     if ($key !== 'code') {
                         $updateQuery .= "`$key` = '$value', ";
@@ -281,18 +289,16 @@ if (isset($data->request_type)) {
                 $updateQuery .= "`entered_by` = 'System', ";
 
                 $updateQuery = rtrim($updateQuery, ', ');
-                $updateQuery .= " WHERE `code` = '$customerCode'";
+                $updateQuery .= " WHERE `id` = '$id'";
+                // echo $updateQuery;
                 if ($conn->query($updateQuery) === TRUE) {
-                    // echo json_encode(array("message" => "Customer updated successfully"));
-                    Success('Customer updated successfully');
+                    Success('Subunit updated successfully');
                 } else {
-                    // echo json_encode(array("error" => "Error updating customer: " . $conn->error));
                     Failure("Error updating customer: " . $conn->error);
-
                 }
             } else {
                 // echo json_encode(array("error" => "Customer code or updated details missing"));
-                Failure("Customer code or updated details missing");
+                Failure("Subunit code or updated details missing");
             }
         }
         break;
