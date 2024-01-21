@@ -100,12 +100,12 @@ function validateData($data){
     if (
         isset($data->code) &&
         isset($data->srno) &&
-        isset($data->password) &&
+        // isset($data->password) &&
         isset($data->user_name) &&
         isset($data->entered_by) &&
         !empty($data->entered_by) &&
         !empty($data->user_name) &&
-        !empty($data->password) &&
+        // !empty($data->password) &&
         !empty($data->code) &&
         !empty($data->srno)
     ) {
@@ -113,6 +113,22 @@ function validateData($data){
     } else {
         return false;
     }
+}
+function checkSubUnit($user_name, $conn){
+    $query = "SELECT COUNT(*) AS count FROM customer_contact WHERE `user_name` = '$user_name'";
+    $result = $conn->query($query);
+    if ($result) {
+        $row = $result->fetch_assoc();
+        $count = $row['count'];
+        if ($count == 0) {
+            return false;
+        } else {
+            return "Username already exists.";
+        }
+    } else {
+        // Handle query error
+        echo "Error executing query: " . $conn->error;
+    }  
 }
 
 if (isset($data->request_type)) {
@@ -174,16 +190,19 @@ if (isset($data->request_type)) {
                 if(isset($data->type)){
                     $type = $data->type;
                 }
+                $res_user = checkSubUnit($user_name, $conn);
+                if($res_user){
+                    Failure($res_user);
+                }else{
+                    $sql = "INSERT INTO customer_contact ( `code`, `srno`, `contactname`, `contactdesignation`, `contactmobile`, `contactemail`, `remarks`, `unit_location`, `unit_address`, `user_name`, `password`, `entered_by`, `type`, `timestamp` ) 
+                    VALUES ('$code', '$srno', '$contactname', '$contactdesignation', '$contactmobile', '$contactemail', '$remarks', '$unit_location', '$unit_address', '$user_name', '$password', '$entered_by', '$type', '$timestamp' )";
 
-                $sql = "INSERT INTO customer_contact ( `code`, `srno`, `contactname`, `contactdesignation`, `contactmobile`, `contactemail`, `remarks`, `unit_location`, `unit_address`, `user_name`, `password`, `entered_by`, `type`, `timestamp` ) 
-                VALUES ('$code', '$srno', '$contactname', '$contactdesignation', '$contactmobile', '$contactemail', '$remarks', '$unit_location', '$unit_address', '$user_name', '$password', '$entered_by', '$type', '$timestamp' )";
-
-                if ($conn->query($sql) === TRUE) {
-                    Success("Subunit added successfully");
-                } else {
-                    Failure("Error: " . $sql . "<br>" . $conn->error);
-                }
-        
+                    if ($conn->query($sql) === TRUE) {
+                        Success("Subunit added successfully");
+                    } else {
+                        Failure("Error: " . $sql . "<br>" . $conn->error);
+                    }
+                }       
             } else {
                 Failure("Invalid data. Required fields are missing or empty.");
             }
@@ -194,9 +213,6 @@ if (isset($data->request_type)) {
             $pagination = true; // Default pagination is true
             if(isset($data->code)){
                 $code = $data->code;
-                if (isset($data->records_per_page)) {
-                    $recordsPerPage = $data->records_per_page;
-                }
     
                 if(isset($data->records_per_page)){
                     $recordsPerPage = $data->records_per_page;
@@ -261,9 +277,9 @@ if (isset($data->request_type)) {
         }
         break;
         case "GET_CUSTOMER_DETAILS":{
-            if(isset($data->customer_code)){
-                $customerCode = $data->customer_code;
-                $sql = "SELECT `code`, `name`, `address`, `city`, `state`, `pincode`, `phone1`, `phone2`, `email`, `fax`, `date_created`, `tally_name`, `GST_no`, `remarks`, `status`  FROM customer WHERE `code` = '$customerCode' AND  `status` = 'Active' ";
+            if(isset($data->code)){
+                $customerCode = $data->code;
+                $sql = "SELECT `code`, `name`, `address`, `city`, `state`, `pincode`, `phone1`, `phone2`, `email`, `fax`, `date_created`, `tally_name`, `GST_no`, `remarks`, `status`  FROM customer_contact WHERE `code` = '$customerCode' AND  `status` = 'Active' ";
                 $result = $conn->query($sql);
                 if ($result->num_rows > 0) {
                     $customerDetails = $result->fetch_assoc();
@@ -276,26 +292,43 @@ if (isset($data->request_type)) {
             }
         }
         break;
+        case "GET_SUB_UNIT_ID":{
+            if(isset($data->code)){
+                $code = $data->code;
+                $sql = "SELECT `id`, `code`, `srno`, `contactname`, `contactdesignation`, `contactmobile`, `contactemail`, `remarks`, `unit_location`, `unit_address`, `user_name`, `entered_by`, `type`, `timestamp` FROM customer_contact WHERE `code` = '$code' ORDER BY `id` DESC LIMIT 1";
+                $result = $conn->query($sql);
+                if ($result->num_rows > 0) {
+                    $subUnit = $result->fetch_assoc();
+                    Success("Fetch customer details successfully", $subUnit);
+                } else {
+                    Failure("Customer not found");
+                }
+            }else {
+                Failure("Invalid data. Required fields are missing or empty.");
+            }
+        }
+        break;
         case "UPDATE_SUB_UNIT":{
             $id = isset($data->id) ? $data->id : '';
             $updatedDetails = isset($data->updated_details) ? $data->updated_details : array();
             if (!empty($id) && !empty($updatedDetails)) {
-                $updateQuery = "UPDATE `customer_contact` SET ";
-                foreach ($updatedDetails as $key => $value) {
-                    if ($key !== 'code') {
-                        $updateQuery .= "`$key` = '$value', ";
+ 
+                    $updateQuery = "UPDATE `customer_contact` SET ";
+                    foreach ($updatedDetails as $key => $value) {
+                        if ($key !== 'code') {
+                            $updateQuery .= "`$key` = '$value', ";
+                        }
                     }
-                }
-                $updateQuery .= "`entered_by` = 'System', ";
-
-                $updateQuery = rtrim($updateQuery, ', ');
-                $updateQuery .= " WHERE `id` = '$id'";
-                // echo $updateQuery;
-                if ($conn->query($updateQuery) === TRUE) {
-                    Success('Subunit updated successfully');
-                } else {
-                    Failure("Error updating customer: " . $conn->error);
-                }
+                    $updateQuery .= "`entered_by` = 'System', ";
+    
+                    $updateQuery = rtrim($updateQuery, ', ');
+                    $updateQuery .= " WHERE `id` = '$id'";
+                    // echo $updateQuery;
+                    if ($conn->query($updateQuery) === TRUE) {
+                        Success('Subunit updated successfully');
+                    } else {
+                        Failure("Error updating customer: " . $conn->error);
+                    }
             } else {
                 // echo json_encode(array("error" => "Customer code or updated details missing"));
                 Failure("Subunit code or updated details missing");

@@ -3,20 +3,19 @@ include( "config.php");
 
 $data = json_decode(file_get_contents("php://input"));
 $create_at = date("Y-m-d H:i:s"); // Format: Year-Month-Day Hour:Minute:Second
-// echo $email;
 
 function validateData($data){
     if (
         isset($data->dcno) &&
         isset($data->cust_code) &&
         isset($data->transport_no) &&
-        isset($data->cust_cont_srno) &&
+        isset($data->cust_sub_unit_code) &&
         isset($data->item_list) &&
         !empty($data->dcno) &&
         !empty($data->cust_code) &&
         !empty($data->transport_no) &&
         !empty($data->item_list) &&
-        !empty($data->cust_cont_srno)
+        !empty($data->cust_sub_unit_code)
     ) {
         return true;
     } else {
@@ -25,9 +24,9 @@ function validateData($data){
 }
 global $delivery_main, $transporter, $customer;
 
-$delivery_main = "series.date_added.email.timestamp.cust_code.cust_cont_srno.transport_type.transport_no.driver.warehouse.no.dcno.manual_dc.transport_amt.tax_amt.total_amt.remarks.payment_status";
-$transporter = "code.type.sub_type.name.email.address1.address2.address3.location_code.city.state.phone1.phone2.fax.user.invoice.GST_no.remarks.payment_type";
-$customer = "code.type.sub_type.name.email.address1.address2.address3.location_code.city.state.phone1.phone2.fax.user.invoice.GST_no.remarks.payment_type";
+$delivery_main = "date_added.timestamp.cust_code.cust_sub_unit_code.transport_no.transport_type.no.dcno.pono.manual_dc.transport_amt.remarks";
+$transporter = "code.name.email.address.city.state.phone1.phone2.fax.GST_no.remarks.entered_by";
+$customer = "code.name.email.address.city.state.phone1.phone2.fax.GST_no.remarks.entered_by";
 $delivery_line = "srno.line_no.dcno.item.rate.quantity.quantity_volume.line_total.line_tax_rate.line_tax";
 
 function getFieldsQuery($fieldsString, $type) {
@@ -60,45 +59,29 @@ if (isset($data->request_type)) {
             if (validateData($data)) {
                 $series = "";
                 $date_added = $create_at;
-                $email = "";
                 $timestamp = $create_at;
                 $cust_code = "";
-                $cust_cont_srno = "";
-                $transport_type = "";
+                $cust_sub_unit_code = "";
                 $transport_no = "";
-                $driver = "";
-                $warehouse = "";
                 $dcno = "";
                 $manual_dc = "";
                 $transport_amt = 0;
-                $tax_amt = 0;
-                $total_amt = 0;
                 $remarks = "";
                 $item_list = array();
-                $payment_status = "Pending";
                 if(isset($data->series)){
                     $series = $data->series;
-                }
-                if(isset($data->payment_status)){
-                    $payment_status = $data->payment_status;
                 }
                 if(isset($data->cust_code)){
                     $cust_code = $data->cust_code;
                 }
-                if(isset($data->cust_cont_srno)){
-                    $cust_cont_srno = $data->cust_cont_srno;
-                }
-                if(isset($data->transport_type)){
-                    $transport_type = $data->transport_type;
+                if(isset($data->cust_sub_unit_code)){
+                    $cust_sub_unit_code = $data->cust_sub_unit_code;
                 }
                 if(isset($data->transport_no)){
                     $transport_no = $data->transport_no;
                 }
-                if(isset($data->driver)){
-                    $driver = $data->driver;
-                }
-                if(isset($data->warehouse)){
-                    $warehouse = $data->warehouse;
+                if(isset($data->transport_type)){
+                    $transport_type = $data->transport_type;
                 }
                 if(isset($data->dcno)){
                     $dcno = $data->dcno;
@@ -109,23 +92,14 @@ if (isset($data->request_type)) {
                 if(isset($data->transport_amt)){
                     $transport_amt = $data->transport_amt;
                 }
-                if(isset($data->tax_amt)){
-                    $tax_amt = $data->tax_amt;
-                }
-                if(isset($data->total_amt)){
-                    $total_amt = $data->total_amt;
-                }
                 if(isset($data->remarks)){
                     $remarks = $data->remarks;
                 }
                 if(isset($data->item_list)){
                     $item_list = (array) $data->item_list;
                 }
-                if(isset($data->email)){
-                    $email = $data->email;
-                }
-                $sql = "INSERT INTO `delivery_main` ( `series`, `date_added`, `timestamp`, `cust_code`, `cust_cont_srno`, `transport_type`, `transport_no`, `driver`, `warehouse`, `dcno`, `manual_dc`, `transport_amt`, `tax_amt`, `total_amt`, `payment_status`, `remarks`, `email`) VALUES
-                ( '$series', '$date_added', '$date_added', '$cust_code', '$cust_cont_srno', '$transport_type', '$transport_no', '$driver', '$warehouse', '$dcno', '$manual_dc', $transport_amt, $tax_amt, $total_amt, '$payment_status', '$remarks', '$email') ";
+                $sql = "INSERT INTO `delivery_main` ( `date_added`, `timestamp`, `cust_code`, `cust_sub_unit_code`, `transport_no`, `transport_type`, `dcno`, `manual_dc`, `transport_amt`, `remarks` ) VALUES
+                ( '$date_added', '$date_added', '$cust_code', '$cust_sub_unit_code', '$transport_no', '$transport_type', '$dcno', '$manual_dc', $transport_amt, '$remarks' ) ";
                 $result = $conn->query($sql);
                 if ( $result) {
                     $last_id = $conn->insert_id;
