@@ -1,8 +1,41 @@
 <?php
 include( "config.php");
+include_once("RequestQuery.php");
 
 $data = json_decode(file_get_contents("php://input"));
 $create_at = date("Y-m-d H:i:s"); // Format: Year-Month-Day Hour:Minute:Second
+
+function deliveryLine($data){
+    $state = true;
+    if(empty($data->item_list) || !isset($data->item_list)){
+        $state = false;
+    }else{
+        foreach ($data->item_list as $item) {
+            // Validate each field in $item before adding to the query
+            if (
+                // !isset($item->line_no) ||
+                !isset($item->item_code) ||
+                !isset($item->product_name) ||
+                !isset($item->rate) ||
+                !isset($item->quantity) ||
+                !isset($item->uom) ||
+                !isset($item->item_type) ||
+                !isset($item->warranty) ||
+                // empty($item->line_no) ||
+                empty($item->item_code) ||
+                empty($item->product_name) ||
+                empty($item->rate) ||
+                empty($item->quantity) ||
+                empty($item->uom) ||
+                empty($item->item_type) ||
+                empty($item->warranty)
+            ) {
+                $state = false;
+            }
+        }
+    }
+    return $state;
+}
 
 function validateData($data){
     if (
@@ -17,7 +50,11 @@ function validateData($data){
         !empty($data->item_list) &&
         !empty($data->cust_sub_unit_code)
     ) {
-        return true;
+        if(deliveryLine($data)){
+            return true;
+        }else{
+            return false;
+        }
     } else {
         return false;
     }
@@ -27,7 +64,8 @@ global $delivery_main, $transporter, $customer;
 $delivery_main = "date_added.timestamp.cust_code.cust_sub_unit_code.transport_no.transport_type.no.dcno.pono.manual_dc.transport_amt.remarks";
 $transporter = "code.name.email.address.city.state.phone1.phone2.fax.GST_no.remarks.entered_by";
 $customer = "code.name.email.address.city.state.phone1.phone2.fax.GST_no.remarks.entered_by";
-$delivery_line = "srno.line_no.dcno.item.rate.quantity.quantity_volume.line_total.line_tax_rate.line_tax";
+$customer_contact = "id.code.srno.contactname.contactdesignation.contactmobile.contactemail.remarks.timestamp.unit_location.unit_address.user_name.entered_by.type";
+$delivery_line = "srno.line_no.dcno.item_code.item_type.product_name.warranty.rate.quantity.uom.total_amount";
 
 function getFieldsQuery($fieldsString, $type) {
     $delivery_main = explode('.', $fieldsString); // Convert string to an array
@@ -64,8 +102,10 @@ if (isset($data->request_type)) {
                 $cust_sub_unit_code = "";
                 $transport_no = "";
                 $dcno = "";
+                $pono = "";
                 $manual_dc = "";
                 $transport_amt = 0;
+                $transport_type = "";
                 $remarks = "";
                 $item_list = array();
                 if(isset($data->series)){
@@ -83,6 +123,9 @@ if (isset($data->request_type)) {
                 if(isset($data->transport_type)){
                     $transport_type = $data->transport_type;
                 }
+                if(isset($data->pono)){
+                    $pono = $data->pono;
+                }
                 if(isset($data->dcno)){
                     $dcno = $data->dcno;
                 }
@@ -98,31 +141,48 @@ if (isset($data->request_type)) {
                 if(isset($data->item_list)){
                     $item_list = (array) $data->item_list;
                 }
-                $sql = "INSERT INTO `delivery_main` ( `date_added`, `timestamp`, `cust_code`, `cust_sub_unit_code`, `transport_no`, `transport_type`, `dcno`, `manual_dc`, `transport_amt`, `remarks` ) VALUES
-                ( '$date_added', '$date_added', '$cust_code', '$cust_sub_unit_code', '$transport_no', '$transport_type', '$dcno', '$manual_dc', $transport_amt, '$remarks' ) ";
-                $result = $conn->query($sql);
-                if ( $result) {
-                    $last_id = $conn->insert_id;
-                    $values = [];
-                    
-                    $sql1 = "INSERT INTO delivery_line (`line_no`, `dcno`, `item`, `rate`, `quantity`, `quantity_volume`, `line_total`, `line_tax_rate`, `line_tax`) VALUES";
-                    foreach ($data->item_list as $item) {
-                        $values[] = "('$item->line_no', '$last_id', '$item->item', $item->rate, $item->quantity, $item->quantity_volume, $item->line_total, $item->line_tax_rate, $item->line_tax )";
-                    }
-                    $sql1 .= implode(",", $values);
-                    if ($conn->query($sql1) === TRUE) {
-                        echo json_encode(array("message" => "Delivery entry added successfully"));
+                $check_sql = "SELECT COUNT(*) as count FROM `delivery_main` WHERE dcno = '$dcno'";
+                $resultCheck = $conn->query($check_sql);
+                if ($resultCheck && $resultCheck->num_rows > 0) {
+                    $row = $resultCheck->fetch_assoc();
+                    $count = $row['count'];
+                
+                    if ($count > 0) {
+                        Failure("Error: Delivery with the same dcno already exists");
                     } else {
-                        http_response_code(400);
-                        echo json_encode(array("error" => "Error: " . $sql1 . "<br>" . $conn->error));
+                        $amount=0;
+                        foreach ($data->item_list as $item) {
+                            $total_amount = $item->quantity * $item->rate;
+                            $amount = $amount + $total_amount;
+                        }
+                        $sql = "INSERT INTO `delivery_main` ( `date_added`, `timestamp`, `cust_code`, `cust_sub_unit_code`, `transport_no`, `transport_type`, `dcno`, `manual_dc`, `transport_amt`, `remarks`, `pono` ) VALUES
+                        ( '$date_added', '$date_added', '$cust_code', '$cust_sub_unit_code', '$transport_no', '$transport_type', '$dcno', '$manual_dc', $amount, '$remarks', '$pono' ) ";
+                        // echo $sql;
+                        $result = $conn->query($sql);
+                        if ( $result) {
+                            $last_id = $conn->insert_id;
+                            $values = [];
+                            
+                            $sql1 = "INSERT INTO delivery_line (`line_no`, `dcno`, `item_code`, `product_name`, `rate`, `quantity`, `uom`, `total_amount`, `item_type`, `warranty`) VALUES";
+                            foreach ($data->item_list as $item) {
+                                $total_amount = $item->quantity * $item->rate;
+                                $values[] = "('$item->line_no', $last_id, '$item->item_code', '$item->product_name', $item->rate, $item->quantity, '$item->uom', $total_amount, '$item->item_type', '$item->warranty' )";
+                            }
+                            $sql1 .= implode(",", $values);
+                            if ($conn->query($sql1) === TRUE) {
+                                Success("Delivery entry added successfully");
+                            } else {
+                                Failure("Error: " . $sql1 . "<br>" . $conn->error);
+                            }
+                        } else {
+                            Failure("Error: " . $sql1 . "<br>" . $conn->error);
+                        }
                     }
                 } else {
-                    http_response_code(400);
-                    echo json_encode(array("error" => "Error: " . $sql . "<br>" . $conn->error));
+                    Failure("Error checking item_code existence");
                 }
             }else{
-                http_response_code(400);
-                echo json_encode(array("error" => "Invalid data. Required fields are missing or empty."));
+                Failure("Invalid data. Required fields are missing or empty.");
             }
         }
         break;
@@ -134,7 +194,6 @@ if (isset($data->request_type)) {
             }
             $page = isset($data->page) && is_numeric($data->page) ? $data->page : 1;
             $offset = ($page - 1) * $recordsPerPage;
-            // Check if pagination flag is set to false
             if (isset($data->pagination) && $data->pagination === false) {
                 $pagination = false;
             }
@@ -150,17 +209,21 @@ if (isset($data->request_type)) {
             $delivery_fields = getFieldsQuery($delivery_main, 'delivery_main');
             $transporter_fields = getFieldsQuery($transporter, 'transporter');
             $customer_fields = getFieldsQuery($customer, 'customer');
+            $customer_contact_fields = getFieldsQuery($customer_contact, 'customer_contact');
 
             $sql = "SELECT 
                         $delivery_fields, 
                         $transporter_fields, 
-                        $customer_fields
+                        $customer_fields,
+                        $customer_contact_fields
                     FROM 
             pod.delivery_main 
             INNER JOIN 
-            pod.transporter ON delivery_main.transport_no = transporter.code 
+                pod.transporter ON delivery_main.transport_no = transporter.code
             INNER JOIN 
-            pod.customer ON delivery_main.cust_code = customer.code";
+                    pod.customer_contact ON delivery_main.cust_sub_unit_code = customer_contact.id 
+            INNER JOIN 
+                pod.customer ON delivery_main.cust_code = customer.code";
             if ($pagination) {
                 $sql .= " LIMIT $offset, $recordsPerPage";
             }
@@ -179,7 +242,8 @@ if (isset($data->request_type)) {
                         
                         "delivery" => createDeliveryArray($row, $delivery_main, 'delivery_main'),
                         "transporter" => createDeliveryArray($row, $transporter, 'transporter'),
-                        "customer" => createDeliveryArray($row, $customer, 'customer')
+                        "customer" => createDeliveryArray($row, $customer, 'customer'),
+                        "customer_contact" => createDeliveryArray($row, $customer_contact, 'customer_contact')
                     );
                 }
                 // Send response as JSON
@@ -195,19 +259,23 @@ if (isset($data->request_type)) {
             if(isset($data->delivery_code)){
                 $delivery_fields = getFieldsQuery($delivery_main, 'delivery_main');
                 $transporter_fields = getFieldsQuery($transporter, 'transporter');
+                $customer_contact_fields = getFieldsQuery($customer_contact, 'customer_contact');
                 $customer_fields = getFieldsQuery($customer, 'customer');
                 $delivery_line_fields = getFieldsQuery($delivery_line, 'delivery_line');
 
                 $sql = "SELECT 
                             $delivery_fields, 
                             $transporter_fields, 
-                            $customer_fields
+                            $customer_fields,
+                            $customer_contact_fields
                         FROM 
                             pod.delivery_main 
                         INNER JOIN 
                             pod.transporter ON delivery_main.transport_no = transporter.code 
                         INNER JOIN 
-                            pod.customer ON delivery_main.cust_code = customer.code 
+                            pod.customer ON delivery_main.cust_code = customer.code
+                        INNER JOIN 
+                            pod.customer_contact ON delivery_main.cust_sub_unit_code = customer_contact.id 
                         WHERE 
                             delivery_main.no = $data->delivery_code";
                 
@@ -223,7 +291,8 @@ if (isset($data->request_type)) {
                     $combinedData = array(
                         "delivery" => createDeliveryArray($row, $delivery_main, 'delivery_main'),
                         "transporter" => createDeliveryArray($row, $transporter, 'transporter'),
-                        "customer" => createDeliveryArray($row, $customer, 'customer')
+                        "customer" => createDeliveryArray($row, $customer, 'customer'),
+                        "customer_contact" => createDeliveryArray($row, $customer_contact, 'customer_contact')
                     );
                     $response["data"] = $combinedData;
                 } else {
