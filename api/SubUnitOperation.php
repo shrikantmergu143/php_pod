@@ -149,8 +149,23 @@ if (isset($data->request_type)) {
                 $entered_by = "";
                 $remarks = "";
                 $type = "";
+                $company_name = "";
+                $pincode = "";
+                $state = "";
+                $city = "";
                 $timestamp = $currentDateTime;
-
+                if(isset($data->company_name)){
+                    $company_name = $data->company_name;
+                }
+                if(isset($data->state)){
+                    $state = $data->state;
+                }
+                if(isset($data->city)){
+                    $city = $data->city;
+                }
+                if(isset($data->pincode)){
+                    $pincode = $data->pincode;
+                }
                 if(isset($data->code)){
                     $code = $data->code;
                 }
@@ -194,8 +209,8 @@ if (isset($data->request_type)) {
                 if($res_user){
                     Failure($res_user);
                 }else{
-                    $sql = "INSERT INTO customer_contact ( `code`, `srno`, `contactname`, `contactdesignation`, `contactmobile`, `contactemail`, `remarks`, `unit_location`, `unit_address`, `user_name`, `password`, `entered_by`, `type`, `timestamp` ) 
-                    VALUES ('$code', '$srno', '$contactname', '$contactdesignation', '$contactmobile', '$contactemail', '$remarks', '$unit_location', '$unit_address', '$user_name', '$password', '$entered_by', '$type', '$timestamp' )";
+                    $sql = "INSERT INTO customer_contact ( `code`, `srno`, `contactname`, `contactdesignation`, `contactmobile`, `contactemail`, `remarks`, `unit_location`, `unit_address`, `user_name`, `password`, `entered_by`, `type`, `city`, `state`, `company_name`, `pincode`, `timestamp` ) 
+                    VALUES ('$code', '$srno', '$contactname', '$contactdesignation', '$contactmobile', '$contactemail', '$remarks', '$unit_location', '$unit_address', '$user_name', '$password', '$entered_by', '$type', '$city', '$state', '$company_name', '$pincode', '$timestamp' )";
 
                     if ($conn->query($sql) === TRUE) {
                         Success("Subunit added successfully");
@@ -245,7 +260,7 @@ if (isset($data->request_type)) {
                     $totalRecords = $resultCount->fetch_assoc()['total_records'];
     
                 }
-                $sql = "SELECT `id`, `code`, `srno`, `contactname`, `contactdesignation`, `contactmobile`, `contactemail`, `remarks`, `unit_location`, `unit_address`, `user_name`, `entered_by`, `type`, `timestamp` FROM `customer_contact` 
+                $sql = "SELECT `id`, `code`, `srno`, `contactname`, `contactdesignation`, `contactmobile`, `contactemail`, `remarks`, `unit_location`, `unit_address`, `user_name`, `entered_by`, `type`,  `city`, `state`, `company_name`, `pincode`, `timestamp` FROM `customer_contact` 
                         WHERE 
                         `code` = '$code' AND 
                         ( `contactmobile` LIKE '%$search%' OR 

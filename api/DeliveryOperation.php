@@ -64,7 +64,7 @@ global $delivery_main, $transporter, $customer;
 $delivery_main = "date_added.timestamp.cust_code.cust_sub_unit_code.transport_no.transport_type.no.dcno.pono.manual_dc.transport_amt.remarks";
 $transporter = "code.name.email.address.city.state.phone1.phone2.fax.GST_no.remarks.entered_by";
 $customer = "code.name.email.address.city.state.phone1.phone2.fax.GST_no.remarks.entered_by";
-$customer_contact = "id.code.srno.contactname.contactdesignation.contactmobile.contactemail.remarks.timestamp.unit_location.unit_address.user_name.entered_by.type";
+$customer_contact = "id.code.srno.contactname.contactdesignation.contactmobile.contactemail.remarks.timestamp.unit_location.unit_address.user_name.entered_by.type.company_name.state.city.pincode";
 $delivery_line = "srno.line_no.dcno.item_code.item_type.product_name.warranty.rate.quantity.uom.total_amount";
 
 function getFieldsQuery($fieldsString, $type) {
@@ -155,6 +155,28 @@ if (isset($data->request_type)) {
                             $total_amount = $item->quantity * $item->rate;
                             $amount = $amount + $total_amount;
                         }
+                        $sql_last_delivery = "SELECT manual_dc FROM `delivery_main` WHERE cust_code = '$cust_code' ORDER BY timestamp DESC LIMIT 1";
+                        $result_last_delivery = $conn->query($sql_last_delivery);
+
+                        if ($result_last_delivery && $result_last_delivery->num_rows > 0) {
+                            $row_last_delivery = $result_last_delivery->fetch_assoc();
+                            $last_manual_dc = $row_last_delivery['manual_dc'];
+
+                            // Extract the numeric part from the manual_dc
+                            preg_match('/(\d+)$/', $last_manual_dc, $matches);
+                            $numeric_part = isset($matches[1]) ? intval($matches[1]) : 0;
+
+                            // Increment the numeric part by 1
+                            $new_numeric_part = str_pad($numeric_part + 1, 6, '0', STR_PAD_LEFT);
+
+                            // Generate the new manual_dc by concatenating customer name and incremented numeric part
+                            $manual_dc = substr($last_manual_dc, 0, -strlen($new_numeric_part)) . $new_numeric_part;
+                        } else {
+                            // If no previous deliveries found for the customer, set manual_dc to default value
+                            $manual_dc = $manual_dc . '000001';
+                        }
+
+                        // print_r($row_last_delivery);
                         $sql = "INSERT INTO `delivery_main` ( `date_added`, `timestamp`, `cust_code`, `cust_sub_unit_code`, `transport_no`, `transport_type`, `dcno`, `manual_dc`, `transport_amt`, `remarks`, `pono` ) VALUES
                         ( '$date_added', '$date_added', '$cust_code', '$cust_sub_unit_code', '$transport_no', '$transport_type', '$dcno', '$manual_dc', $amount, '$remarks', '$pono' ) ";
                         // echo $sql;
@@ -163,10 +185,14 @@ if (isset($data->request_type)) {
                             $last_id = $conn->insert_id;
                             $values = [];
                             
-                            $sql1 = "INSERT INTO delivery_line (`line_no`, `dcno`, `item_code`, `product_name`, `rate`, `quantity`, `uom`, `total_amount`, `item_type`, `warranty`) VALUES";
+                            $sql1 = "INSERT INTO delivery_line (`line_no`, `dcno`, `item_code`, `product_name`, `rate`, `quantity`, `uom`, `total_amount`, `pack_size`, `item_type`, `warranty`) VALUES";
                             foreach ($data->item_list as $item) {
                                 $total_amount = $item->quantity * $item->rate;
-                                $values[] = "('$item->line_no', $last_id, '$item->item_code', '$item->product_name', $item->rate, $item->quantity, '$item->uom', $total_amount, '$item->item_type', '$item->warranty' )";
+                                $pack_size = 0;
+                                if(isset($item->pack_size)){
+                                    $pack_size = $item->pack_size;
+                                }
+                                $values[] = "('$item->line_no', $last_id, '$item->item_code', '$item->product_name', $item->rate, $item->quantity, '$item->uom', $total_amount, $pack_size, '$item->item_type', '$item->warranty' )";
                             }
                             $sql1 .= implode(",", $values);
                             if ($conn->query($sql1) === TRUE) {
@@ -225,7 +251,9 @@ if (isset($data->request_type)) {
             INNER JOIN 
                 pod.customer ON delivery_main.cust_code = customer.code";
             if ($pagination) {
-                $sql .= " LIMIT $offset, $recordsPerPage";
+                $sql .= " ORDER BY delivery_main.timestamp DESC LIMIT $offset, $recordsPerPage";
+            } else {
+                $sql .= " ORDER BY delivery_main.timestamp DESC";
             }
             $result = $conn->query($sql);
             $response = array(
@@ -337,49 +365,69 @@ if (isset($data->request_type)) {
         }
         break;
         case "UPDATE_DELIVERY":{
-            $no = isset($data->no) ? $data->no : '';
-            $custCode = isset($data->updatedDetailsMain->cust_code) ? $data->updatedDetailsMain->cust_code : '';
-            $updatedDetailsMain = isset($data->updatedDetailsMain) ? $data->updatedDetailsMain : (object) array();
-            $updatedDetailsLine = isset($data->updated_details_line) ? $data->updated_details_line : [];
-            
-            if (!empty($no) && !empty($updatedDetailsMain) && !empty($updatedDetailsLine)) {
-                $data_query = [];
-                $updateQueryMain = "UPDATE delivery_main SET ";
-                foreach ($updatedDetailsMain as $key => $value) {
-                    if ($key !== 'no') {
-                        $updateQueryMain .= "`$key` = '$value', ";
-                    }
+            $no = isset($data->no) ? $conn->real_escape_string($data->no) : '';
+$custCode = isset($data->updatedDetailsMain->cust_code) ? $conn->real_escape_string($data->updatedDetailsMain->cust_code) : '';
+$updatedDetailsMain = isset($data->updatedDetailsMain) ? $data->updatedDetailsMain : (object) array();
+$updatedDetailsLine = isset($data->updated_details_line) ? $data->updated_details_line : [];
+
+if (!empty($no) && !empty($updatedDetailsMain) && !empty($updatedDetailsLine)) {
+    $data_query = [];
+    $updateQueryMain = "UPDATE delivery_main SET ";
+    foreach ($updatedDetailsMain as $key => $value) {
+        if ($key !== 'no') {
+            $updateQueryMain .= "`$key` = '" . $conn->real_escape_string($value) . "', ";
+        }
+    }
+    $updateQueryMain = rtrim($updateQueryMain, ', ');
+    $updateQueryMain .= " WHERE `no` = '$no'";
+    $data_query[] = $updateQueryMain;
+
+    foreach ($updatedDetailsLine as $item) {
+        if (isset($item->srno) && !empty($item->srno)) {
+            $updateQueryLine = "UPDATE delivery_line SET ";
+            foreach ($item as $key => $value) {
+                if ($key !== 'srno') {
+                    $escaped_value = $conn->real_escape_string($value);
+                    $updateQueryLine .= "`$key` = '$escaped_value', ";
                 }
-                $updateQueryMain = rtrim($updateQueryMain, ', ');
-                $updateQueryMain .= " WHERE `no` = '$no'";
-                $data_query[] = $updateQueryMain;
-            
-                foreach ($updatedDetailsLine as $item) {
-                    if (isset($item->srno) && !empty($item->srno)) {
-                        $updateQueryLine = "UPDATE delivery_line SET ";
-                        foreach ($item as $key => $value) {
-                            if ($key !== 'srno') {
-                                $updateQueryLine .= "`$key` = '$value', ";
-                            }
-                        }
-                        $updateQueryLine = rtrim($updateQueryLine, ', ');
-                        $updateQueryLine .= " WHERE `srno` = '{$item->srno}' AND `no` = '$no'";
-                        $data_query[] = $updateQueryLine;
-                    } else {
-                        $sql1 = "INSERT INTO delivery_line (`line_no`, `dcno`, `item`, `rate`, `quantity`, `quantity_volume`, `line_total`, `line_tax_rate`, `line_tax`) VALUES";
-                        $insertQueryLine = $sql1 ."('$item->line_no', '$no', '$item->item', $item->rate, $item->quantity, $item->quantity_volume, $item->line_total, $item->line_tax_rate, $item->line_tax )";
-                        $data_query[] = $insertQueryLine;
-                    }
-                }
-                $queryString = implode("; ", $data_query);
-                if ($conn->multi_query($queryString) === TRUE) {
-                    echo json_encode(array("message" => "Queries executed successfully"));
-                } else {
-                    echo json_encode(array("error" => "Error executing queries: " . $conn->error));
-                }                
-            } else {
-                echo json_encode(array("error" => "No or incomplete data provided"));
             }
+            $updateQueryLine = rtrim($updateQueryLine, ', ');
+            $updateQueryLine .= " WHERE `srno` = '{$conn->real_escape_string($item->srno)}' AND `dcno` = '$no'";
+            $data_query[] = $updateQueryLine;
+        } else {
+            // Check if all required properties exist before inserting
+            if (isset($item->line_no, $item->item, $item->product_name, $item->rate, $item->quantity, $item->uom, $item->item_type, $item->warranty)) {
+                $total_amount = $item->quantity * $item->rate;
+                $pack_size = isset($item->pack_size) ? $item->pack_size : 0;
+                $escaped_line_no = $conn->real_escape_string($item->line_no);
+                $escaped_item = $conn->real_escape_string($item->item_code);
+                $escaped_product_name = $conn->real_escape_string($item->product_name);
+                $escaped_rate = $conn->real_escape_string($item->rate);
+                $escaped_quantity = $conn->real_escape_string($item->quantity);
+                $escaped_uom = $conn->real_escape_string($item->uom);
+                $escaped_item_type = $conn->real_escape_string($item->item_type);
+                $escaped_warranty = $conn->real_escape_string($item->warranty);
+    
+                $sql1 = "INSERT INTO delivery_line (`line_no`, `dcno`, `item_code`, `product_name`, `rate`, `quantity`, `uom`, `total_amount`, `pack_size`, `item_type`, `warranty`) VALUES ";
+                $insertQueryLine = $sql1 . "('$escaped_line_no', '$no', '$escaped_item', '$escaped_product_name', '$escaped_rate', '$escaped_quantity', '$escaped_uom', '$total_amount', '$pack_size', '$escaped_item_type', '$escaped_warranty')";
+                $data_query[] = $insertQueryLine;
+            } else {
+                // Log or handle the case when required properties are missing
+            }
+        }
+    }
+    
+    $queryString = implode("; ", $data_query);
+    // echo json_encode(array("error" => $queryString));
+
+    if ($conn->multi_query($queryString) === TRUE) {
+        echo json_encode(array("message" => "Queries executed successfully"));
+    } else {
+        echo json_encode(array("error" => "Error executing queries: " . $conn->error));
+    }
+} else {
+    echo json_encode(array("error" => "No or incomplete data provided"));
+}
                        
         }
         break;
