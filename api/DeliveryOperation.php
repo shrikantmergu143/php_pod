@@ -449,7 +449,7 @@ if (isset($data->request_type)) {
                         $updateQueryLine .= " WHERE `srno` = '{$conn->real_escape_string($item->srno)}' AND `dcno` = '$no'";
                         $data_query[] = $updateQueryLine;
                     } else {
-                        if (isset($item->line_no, $item->item, $item->product_name, $item->rate, $item->quantity, $item->uom, $item->item_type, $item->warranty)) {
+                        if (isset($item->line_no, $item->item_code, $item->product_name, $item->rate, $item->quantity, $item->uom, $item->item_type, $item->warranty)) {
                             $total_amount = $item->quantity * $item->rate;
                             $amount += $total_amount; // Accumulate total amount
                             $pack_size = isset($item->pack_size) ? $item->pack_size : 0;
@@ -485,9 +485,9 @@ if (isset($data->request_type)) {
                 $queryString = implode("; ", $data_query);
                 // print_r($queryString);
                 if ($conn->multi_query($queryString) === TRUE) {
-                    echo json_encode(array("message" => "Queries executed successfully"));
+                    Success('Queries executed successfully');
                 } else {
-                    echo json_encode(array("error" => "Error executing queries: " . $conn->error));
+                    Failure("Error executing queries:" . $conn->error);
                 }
             } else {
                 echo json_encode(array("error" => "No or incomplete data provided"));
